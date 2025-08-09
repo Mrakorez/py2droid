@@ -1,7 +1,7 @@
 # CPython build configuration
 [python]
 # URL to Python source archive (must be .tar.gz)
-sources_url = "https://github.com/python/cpython/archive/refs/tags/v3.13.5.tar.gz"
+sources_url = "https://github.com/python/cpython/archive/refs/tags/v3.13.6.tar.gz"
 
 # Whether to apply patches from 'patches/' directory to source code
 apply_patches = true
