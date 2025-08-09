@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2025-08-09
+
+### 💼 Other
+
+- *(python)* Bump to 3.13.6
+- *(module)* Bump to v0.1.1
+
+### 📚 Documentation
+
+- *(readme)* Update python version badge to 3.13.6
+
 ## [0.1.0] - 2025-06-14
 
 ### 🚀 Features
