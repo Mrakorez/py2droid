@@ -1,670 +1,656 @@
 #!/usr/bin/env python3
 
-"""Build CPython for Android and package it into Magisk modules."""
+"""Build a Py2Droid Magisk module.
 
+This script handles downloading, patching, building, and packaging CPython
+into a flashable Magisk zip file.
+
+Requires:
+  - Python 3.12+
+  - wcmatch
+  - External tools: curl, patch
+"""
+
+import io
 import logging
 import os
 import re
+import shlex
+import shutil
 import subprocess
+import sys
 import tarfile
-import tomllib
-from argparse import ArgumentParser
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from collections.abc import Sequence
 from dataclasses import dataclass
-from io import BytesIO
 from itertools import chain
-from shutil import rmtree
-from subprocess import CompletedProcess
-from typing import Any
-from zipfile import ZIP_DEFLATED, ZipFile
+from string import Template
+from subprocess import CalledProcessError, CompletedProcess
+from typing import Any, ClassVar
+from zipfile import ZipFile
 
-from wcmatch.pathlib import GL, B, E, N, Path
+import tomllib
+from wcmatch.glob import BRACE, EXTGLOB, GLOBSTARLONG, NEGATE
+from wcmatch.pathlib import Path
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Mrakorez"
 __license__ = "MIT"
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[1]
 
-DIST_DIR = PROJECT_ROOT / "dist"
-BUILD_DIR = PROJECT_ROOT / "build"
-MODULE_DIR = PROJECT_ROOT / "module"
-PATCHES_DIR = PROJECT_ROOT / "patches"
+BUILD_CONFIG = Path("build.toml")
+BUILD_DIR = Path("build")
+DIST_DIR = Path("dist")
+MODULE_DIR = Path("module")
+PATCHES_DIR = Path("patches")
 
-BUILD_CONFIG_FILE = PROJECT_ROOT / "build.toml"
+REQUIRED_TOOLS = ("curl", "patch")
+
+# Used for a simple heuristic to detect binary files.
+# From: https://stackoverflow.com/questions/898669/how-can-i-detect-if-a-file-is-binary-non-text-in-python
+TEXT_CHARS = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7F})
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class PythonConfig:
-    """Configuration for the CPython build."""
+class BuilderError(Exception):
+    """Raised for errors that occur during the build process."""
 
-    sources_url: str
+
+@dataclass(slots=True, frozen=True, eq=False)
+class CPythonConfig:
+    """Hold configuration for the CPython build process."""
 
     apply_patches: bool
-    hosts: list[str]
+    build_hosts: list[str]
     configure_args: list[str]
     configure_env: dict[str, str]
-    package: bool
+    version: str
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True, frozen=True, eq=False)
 class ModuleConfig:
-    """Configuration for the Magisk module."""
-
-    include_files: list[str]
+    """Hold configuration for the final Magisk module packaging."""
 
     debloat: bool
     debloat_patterns: list[str]
-    replace_shebangs: bool
-    shebang_mapping: dict[str, str]
+    fix_shebangs: bool
+    include: list[Path]
+    name: Template
     strip: bool
     strip_args: list[str]
 
 
+@dataclass(slots=True, frozen=True, eq=False)
+class CPythonBuildResult:
+    """Hold results from the CPython build process.
+
+    Attributes:
+        source_code: Path to the extracted CPython source code.
+        used_ndk_toolchain: Path to the NDK toolchain used for the build.
+
+    """
+
+    source_code: Path
+    used_ndk_toolchain: Path
+
+
+class CPythonBuilder:
+    """Handle the download, patching, and compilation of CPython for Android."""
+
+    source_archive_url = "https://github.com/python/cpython/archive/refs/tags/"
+
+    def __init__(self, config: CPythonConfig) -> None:
+        """Initialize the builder with a given CPython configuration."""
+        self.config = config
+
+    def build(self) -> CPythonBuildResult:
+        """Execute the entire CPython build pipeline.
+
+        This method downloads the source code, applies patches, configures the
+        environment, and runs the build for all specified hosts.
+        """
+        source_tarball = self._download()
+        source_dir = self._extract(source_tarball)
+
+        if self.config.apply_patches:
+            self._apply_patches(source_dir)
+
+        toolchain = self._find_ndk_toolchain(source_dir)
+        build_env = self._create_env(toolchain)
+
+        self._build_hosts(source_dir, build_env)
+
+        return CPythonBuildResult(source_dir, toolchain)
+
+    def _download(self) -> Path:
+        """Download the CPython source tarball for the configured version.
+
+        If the tarball already exists in the build directory, the download is
+        skipped.
+        """
+        tarball_name = f"v{self.config.version}.tar.gz"
+
+        tarball_path = BUILD_DIR / tarball_name
+
+        if tarball_path.exists():
+            logger.info(
+                "Skipping download (source tarball already exists): %s",
+                tarball_path,
+            )
+            return tarball_path
+
+        run(
+            "curl",
+            "-Lf",
+            "--retry",
+            "5",
+            "--retry-all-errors",
+            "-o",
+            tarball_path,
+            self.source_archive_url + tarball_name,
+        )
+
+        return tarball_path
+
+    @staticmethod
+    def _extract(source_tarball: Path) -> Path:
+        """Extract a CPython source tarball."""
+        with tarfile.open(source_tarball) as tar:
+            source_dir = BUILD_DIR / tar.getnames()[0]
+
+            if source_dir.exists():
+                logger.info(
+                    "Skipping extraction (source directory already exists): %s",
+                    source_dir,
+                )
+                return source_dir
+
+            tar.extractall(BUILD_DIR, filter="fully_trusted")
+
+        return source_dir
+
+    @staticmethod
+    def _apply_patches(source_dir: Path) -> None:
+        """Apply all patches from the `patches/` directory to the source code."""
+        logger.info("Applying patches to %s...", source_dir)
+
+        for patch in PATCHES_DIR.glob("*.patch"):
+            if patch.is_file():
+                result = run(
+                    "patch",
+                    "-Np1",
+                    "-sr",
+                    "-",
+                    "-i",
+                    "../../" / patch,
+                    capture_output=True,
+                    check=False,
+                    cwd=source_dir,
+                    text=True,
+                )
+
+                sys.stdout.write(result.stdout)
+
+                if result.returncode == 0:
+                    continue
+                if "Reversed (or previously applied) patch detected!" in result.stdout:
+                    continue
+
+                raise CalledProcessError(
+                    result.returncode,
+                    result.args,
+                    result.stdout,
+                    result.stderr,
+                )
+
+    @staticmethod
+    def _find_ndk_toolchain(source_dir: Path) -> Path:
+        """Find the NDK toolchain path from the CPython source.
+
+        This is done by parsing the `ndk_version` from the `Android/android-env.sh`
+        script and locating the corresponding toolchain in $ANDROID_HOME.
+        """
+        android_env = source_dir / "Android" / "android-env.sh"
+
+        with android_env.open(encoding="utf-8") as fin:
+            content = fin.read()
+
+        if (match := re.search("(?m)^ndk_version=(.+)$", content)) is None:
+            error_msg = f"Failed to parse NDK version from file: {android_env}"
+            raise BuilderError(error_msg)
+
+        android_home = Path(os.environ["ANDROID_HOME"])
+        ndk_version = match.group(1)
+
+        prebuilt = android_home / "ndk" / ndk_version / "toolchains/llvm/prebuilt"
+
+        if (toolchain := next(prebuilt.iterdir(), None)) is None:
+            error_msg = f"NDK toolchain not found in {prebuilt}"
+            raise BuilderError(error_msg)
+
+        return toolchain
+
+    def _create_env(self, toolchain: Path) -> dict[str, str]:
+        """Create the environment variables for the CPython build.
+
+        This method updates $PATH and $LIBRARY_PATH to include the NDK
+        toolchain directories, ensuring build scripts can find necessary tools
+        and libraries.
+        """
+        env = os.environ.copy()
+        env.update(self.config.configure_env)
+
+        update_env_path(env, "PATH", toolchain / "bin")
+        update_env_path(env, "LIBRARY_PATH", toolchain / "lib")
+
+        return env
+
+    def _build_hosts(self, source_dir: Path, env: dict[str, str]) -> None:
+        """Run the CPython for Android build process for all target hosts.
+
+        This method automates the execution of the `Android/android.py` script
+        to configure and build CPython for each specified architecture.
+        """
+        android = source_dir / "Android"
+        cross_build = source_dir / "cross-build"
+
+        if not (cross_build / "build").exists():
+            run("./android.py", "configure-build", cwd=android)
+            run("./android.py", "make-build", cwd=android)
+        else:
+            logger.info("Skipping initial setup (build artifacts found).")
+
+        for host in self.config.build_hosts:
+            if (source_dir / "cross-build" / host / "prefix").exists():
+                logger.info("Skipping host %s (build artifacts found).", host)
+                continue
+
+            run(
+                "./android.py",
+                "configure-host",
+                host,
+                "--",
+                *self.config.configure_args,
+                env=env,
+                cwd=android,
+            )
+            run("./android.py", "make-host", host, cwd=android)
+
+
 class ModuleBuilder:
-    """Class for building Magisk modules."""
+    """Handle packaging the compiled CPython into a Magisk module.
+
+    This class takes the build artifacts from `CPythonBuilder`, processes them
+    (debloating, stripping, fixing shebangs), and packages them into a
+    flashable Magisk module ZIP file.
+    """
+
+    # For converting the build triplet to Magisk's $ARCH variable.
+    arch_mapping: ClassVar[dict[str, str]] = {
+        "aarch64-linux-android": "arm64",
+        "arm-linux-androideabi": "arm",
+        "armv7a-linux-androideabi": "arm",
+        "i686-linux-android": "x86",
+        "x86_64-linux-android": "x64",
+    }
+
+    # Module description for overriding in module.prop.
+    # Will be formatted with CPython version.
+    description = "CPython {} for Android"
+
+    # Filename of the compressed .tar.xz prefix to include in the module.
+    # Will be formatted with the Magisk-converted architecture.
+    compressed_name = "cpython-{}.tar.xz"
+
+    debloat_flags = GLOBSTARLONG | NEGATE | EXTGLOB | BRACE
+
+    # Used for finding and replacing shebangs.
+    python_shebang = b"#!/system/bin/python3\n"
+    python_shebang_re = re.compile(
+        rb"^#!\s*/(?:usr/(?:local/)?|)(?:bin|sbin)/(?:env\s+)?python[0-9]*(?:\.[0-9]+)*",
+    )
+    shell_shebang = b"#!/system/bin/sh\n"
+    shell_shebang_re = re.compile(
+        rb"^#!\s*/(?:usr/(?:local/)?|)(?:bin|sbin)/(?:env\s+)?(?:sh|bash|dash)",
+    )
 
     def __init__(
         self,
-        sources: Path,
-        python_ver: str,
-        python_conf: PythonConfig,
-        module_conf: ModuleConfig,
+        config: ModuleConfig,
+        toolchain: Path,
+        cpython_version: str,
+        hosts: Sequence[str],
     ) -> None:
-        """Initialize ModuleBuilder.
+        """Initialize the module builder."""
+        self.config = config
+        self.toolchain = toolchain
+        self.hosts = hosts
 
-        Args:
-            sources: Root directory of CPython source code
-            python_ver: Python version string
-            python_conf: Python build configuration
-            module_conf: Module configuration
+        self.description = self.description.format(cpython_version)
 
+    def build(self, source_code: Path) -> None:
+        """Execute the module packaging pipeline.
+
+        This method processes the build artifacts for each host, compresses them,
+        and then builds the final Magisk module ZIP.
         """
-        self.sources = sources
-        self.python_ver = python_ver
-        self.python_conf = python_conf
-        self.module_conf = module_conf
+        tarballs = []
+        for host in self.hosts:
+            prefix = source_code / "cross-build" / host / "prefix"
 
-        self.module_name, self.module_ver = getprops(
-            MODULE_DIR / "module.prop",
-            "name",
-            "version",
-        )
-        self.module_files = self._collect_module_files()
+            if self.config.debloat:
+                self._debloat(prefix)
+            if self.config.fix_shebangs:
+                self._fix_shebangs(prefix)
+            if self.config.strip:
+                self._strip(prefix)
 
-        # host names to magisk $ARCH mapping
-        self.arch_mapping = {
-            "aarch64-linux-android": "arm64",
-            "armv7a-linux-androideabi": "arm",
-            "arm-linux-androideabi": "arm",
-            "x86_64-linux-android": "x64",
-            "i686-linux-android": "x86",
-        }
+            tarball = self._compress(prefix, host)
+            tarballs.append(tarball)
 
-    def _create_python_archive(self, prefix: Path) -> BytesIO:
-        buf = BytesIO()
-        with tarfile.open(fileobj=buf, mode="w:xz") as archive:
-            archive.add(prefix, prefix.name)
-        return buf
+        self._package_module(tarballs)
 
-    def _collect_module_files(self) -> dict[Path, Path]:
-        files = {}
-        for path, _, filenames in MODULE_DIR.walk(follow_symlinks=False):
-            for file in filenames:
-                filepath = path / file
-                files[filepath] = filepath.relative_to(MODULE_DIR)
-        return files
+    def _debloat(self, prefix: Path) -> None:
+        """Remove unnecessary files and directories from the prefix."""
+        logger.info("Debloating: %s", prefix)
 
-    def _process_module_prop(self, path: Path, arch: str) -> str:
-        lines: list[str] = []
+        for path in prefix.glob(self.config.debloat_patterns, flags=self.debloat_flags):
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
 
-        with path.open() as fin:
-            for line in fin:
-                if line.startswith("description"):
-                    lines.append(
-                        f"description=CPython {self.python_ver} for {arch.upper()}",
-                    )
+            logger.info("  - Removed: %s", path.relative_to(prefix))
+
+    def _fix_shebangs(self, prefix: Path) -> None:
+        """Replace shebangs in scripts with Android-compatible paths.
+
+        This ensures that scripts in `bin/` use `/system/bin/sh` or
+        `/system/bin/python3` as their interpreter.
+        """
+        prefix_bin = prefix / "bin"
+
+        logger.info("Fixing shebangs in: %s", prefix_bin)
+
+        for path in prefix_bin.iterdir():
+            if not path.is_file() or path.is_symlink():
+                continue
+
+            with path.open("rb") as fin:
+                content = fin.readline(1024)
+                if is_binary(content):
+                    continue
+
+                if self.shell_shebang_re.match(content):
+                    new_shebang = self.shell_shebang
+                elif self.python_shebang_re.match(content):
+                    new_shebang = self.python_shebang
                 else:
-                    lines.append(line.strip())
+                    continue
 
-        return "\n".join(lines)
+                content = new_shebang + fin.read()
 
-    def _write_module_file(
-        self,
-        zip_file: ZipFile,
-        path: Path,
-        rel_path: Path,
-        arch: str,
-    ) -> None:
-        if path.name == "module.prop":
-            zip_file.writestr(str(rel_path), self._process_module_prop(path, arch))
-        else:
-            zip_file.write(path, rel_path)
+            path.write_bytes(content)
 
-    def build(self) -> None:
-        """Build Magisk modules for all configured hosts."""
-        for host in self.python_conf.hosts:
-            logger.info("Building for host: %s", host)
+            logger.info("  - Patched: %s", path.relative_to(prefix))
 
-            prefix = self.sources / "cross-build" / host / "prefix"
-            arch = self.arch_mapping.get(host, "unknown")
+    def _strip(self, prefix: Path) -> None:
+        """Remove debug symbols from binaries and libraries in the given prefix.
 
-            python_buf = self._create_python_archive(prefix)
-            output_path = DIST_DIR / f"{self.module_name}-{self.module_ver}-{arch}.zip"
+        Primarily used to post-process prebuilt dependencies from
+        https://github.com/beeware/cpython-android-source-deps,
+        which may contain unstripped binaries and libraries. Stripping
+        reduces the final module size. This method processes all files in `bin/`
+        and `lib/` under the specified prefix, whether prebuilt or built locally.
+        """
+        logger.info("Stripping debug symbols in: %s", prefix)
 
-            with ZipFile(output_path, "w", compression=ZIP_DEFLATED) as zip_out:
-                zip_out.writestr(
-                    f"python-{self.python_ver}-{arch}.tar.xz",
-                    python_buf.getvalue(),
-                )
-                python_buf.close()
-
-                for path, rel_path in self.module_files.items():
-                    self._write_module_file(zip_out, path, rel_path, arch)
-
-                for entry in self.module_conf.include_files:
-                    zip_out.write(entry)
-
-
-def remove_entry(path: Path) -> None:
-    """Remove file, symlink or directory at given path.
-
-    Args:
-        path: Path to remove
-
-    """
-    if not path.exists():
-        return
-
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    else:
-        rmtree(path)
-
-
-def getprops(file: Path, *keys: str, sep: str = "=") -> tuple[str, ...]:
-    """Get values for keys from property file.
-
-    Args:
-        file: Property file to read
-        keys: Keys to extract values for
-        sep: Key-value separator (default: "=")
-
-    Returns:
-        Tuple of found values in order of keys
-
-    """
-    values: list[str] = []
-
-    with file.open() as fin:
-        for line in fin:
-            if sep not in line:
-                continue
-
-            fields = line.split(sep, 1)
-            if len(fields) != 2:  # noqa: PLR2004
-                continue
-
-            if fields[0].strip() in keys:
-                values.append(fields[1].strip())
-
-    return tuple(values)
-
-
-def run(
-    cmd: Sequence[str],
-    *,
-    log: bool = True,
-    env: dict[str, str] | None = None,
-    **kwargs: Any,  # noqa: ANN401
-) -> CompletedProcess:
-    """Run shell command with logging and environment.
-
-    Args:
-        cmd: Command to run
-        log: Whether to log command (default: True)
-        env: Environment variables (default: current env)
-        kwargs: Additional args for subprocess.run
-
-    Returns:
-        CompletedProcess with command results
-
-    Raises:
-        CalledProcessError: If command fails and check=True
-
-    """
-    kwargs.setdefault("check", True)
-
-    if env is None:
+        # This avoids using the full path to llvm-strip to improve log readability.
         env = os.environ.copy()
+        update_env_path(env, "PATH", self.toolchain / "bin")
 
+        llvm_strip = "llvm-strip" + (".exe" if sys.platform == "nt" else "")
+
+        patterns = (
+            "bin/*",
+            "lib/**/*.{so,a}",
+        )
+
+        for path in prefix.glob(patterns, flags=BRACE | GLOBSTARLONG | NEGATE):
+            if not path.is_file() or path.is_symlink():
+                continue
+
+            run(
+                llvm_strip,
+                *self.config.strip_args,
+                path.relative_to(prefix),
+                check=False,
+                cwd=prefix,
+                env=env,
+            )
+
+    def _compress(self, prefix: Path, host: str) -> Path:
+        """Compress a prefix into a `.tar.xz` archive.
+
+        The output filename is determined by the host architecture.
+        """
+        magisk_arch = self.arch_mapping[host]
+
+        tarball_path = BUILD_DIR / self.compressed_name.format(magisk_arch)
+        logger.info("Compressing %s to %s...", prefix, tarball_path)
+
+        with tarfile.open(tarball_path, "w:xz") as tar:
+            tar.add(prefix, prefix.name)
+
+        return tarball_path
+
+    def _package_module(self, tarballs: Sequence[Path]) -> None:
+        """Build the final Magisk module ZIP file from processed artifacts."""
+        props = parse_module_prop()
+        props["description"] = self.description
+
+        zip_path = DIST_DIR / self.config.name.substitute(props)
+        logger.info("Packaging Magisk module: %s", zip_path)
+
+        with ZipFile(zip_path, "w") as zout:
+            logger.info("  - Writing module.prop")
+            zout.writestr("module.prop", format_module_prop(props))
+
+            for entry in (MODULE_DIR, *tarballs, *self.config.include):
+                if entry.is_file():
+                    logger.info("  - Adding file: %s", entry)
+                    zout.write(entry, entry.name)
+                    continue
+
+                logger.info("  - Adding directory: %s", entry)
+                for dirpath, _, filenames in entry.walk(follow_symlinks=False):
+                    for filename in filenames:
+                        filepath = dirpath / filename
+                        if filepath.name != "module.prop":
+                            zout.write(filepath, filepath.relative_to(entry))
+
+
+def run(*command: str | Path, log: bool = True, **kwargs) -> CompletedProcess:
+    """Run an external command with logging."""
     if log:
-        logger.info("> %s", " ".join(cmd))
-    return subprocess.run(cmd, env=env, **kwargs)  # noqa: PLW1510
+        logger.info("> %s", shlex.join(map(str, command)))
+
+    if "check" not in kwargs:
+        kwargs["check"] = True
+
+    return subprocess.run(command, **kwargs)
 
 
-def download(url: str, output: Path) -> CompletedProcess:
-    """Download file from URL with retries using curl.
+def update_env_path(env: dict[str, str], key: str, *values: str | Path) -> None:
+    """Prepend values to a path-like environment variable."""
+    str_values = map(str, values)
 
-    Args:
-        url: URL to download from
-        output: Where to save downloaded file
-
-    Returns:
-        CompletedProcess with download results
-
-    Raises:
-        CalledProcessError: If download fails after retries
-
-    """
-    return run(
-        ["curl", "-Lf", "--retry", "5", "--retry-all-errors", "-o", str(output), url],
-    )
+    if (path := env.get(key)) is None:
+        env[key] = os.pathsep.join(str_values)
+    else:
+        env[key] = os.pathsep.join((*str_values, path))
 
 
-def apply_patches(sources: Path) -> None:
-    """Apply git patches to source code.
-
-    Args:
-        sources: Source code directory to patch
-
-    Raises:
-        CalledProcessError: If patch application fails
-
-    """
-    if not PATCHES_DIR.exists():
-        return
-
-    cwd = Path().cwd()
-    os.chdir(sources)
-
-    for entry in PATCHES_DIR.iterdir():
-        run(["patch", "-p1", "-i", str(entry)])
-
-    os.chdir(cwd)
+def is_binary(data: bytes) -> bool:
+    """Check if a bytes object appears to be binary data."""
+    return bool(data.translate(None, TEXT_CHARS))
 
 
-def is_binary(b: bytes) -> bool:
-    """Check if bytes contain binary data.
+def parse_module_prop() -> dict[str, str]:
+    """Parse `module.prop` into a dictionary."""
+    module_prop = MODULE_DIR / "module.prop"
+    props = {}
 
-    Args:
-        b: Bytes to check
+    with module_prop.open(encoding="utf-8") as fin:
+        for line in fin:
+            new_line = line.strip()
+            if new_line.startswith("#"):
+                continue
 
-    Returns:
-        True if bytes contain binary data
+            parts = new_line.partition("=")
+            props[parts[0]] = parts[2]
 
-    """
-    textchars = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7F})
-    return bool(b.translate(None, textchars))
+    return props
 
 
-def init(*, clear: bool) -> None:
-    """Init build environment.
+def format_module_prop(props: dict[str, str]) -> str:
+    """Convert a dictionary to the `module.prop` string format."""
+    buf = io.StringIO()
 
-    Args:
-        clear: Whether to clean build/dist dirs
+    for k, v in props.items():
+        buf.write(f"{k}={v}\n")
 
-    Raises:
-        OSError: If ANDROID_HOME not set
-        FileNotFoundError: If required dirs/files missing
+    return buf.getvalue()
 
-    """
-    try:
-        _ = os.environ["ANDROID_HOME"]
-    except KeyError:
-        err = "The ANDROID_HOME environment variable is required."
-        raise OSError(err)  # noqa: B904
 
+def _prepare_environment() -> None:
+    """Verify environment variables, external tools, and set the working directory."""
+    if "ANDROID_HOME" not in os.environ:
+        error_msg = "ANDROID_HOME environment variable is not set"
+        raise BuilderError(error_msg)
+
+    for tool in REQUIRED_TOOLS:
+        if not shutil.which(tool):
+            error_msg = f"Required tool not found in PATH: {tool}"
+            raise BuilderError(error_msg)
+
+    if Path.cwd() != PROJECT_DIR:
+        logger.warning("Changing working directory to project root: %s", PROJECT_DIR)
+        os.chdir(PROJECT_DIR)
+
+
+def _prepare_project_directory() -> None:
+    """Validate project structure and create necessary directories."""
     if not MODULE_DIR.exists():
-        err = f"Module directory does not exist: {MODULE_DIR}"
-        raise FileNotFoundError(err)
+        error_msg = f"Module directory not found: {MODULE_DIR}"
+        raise BuilderError(error_msg)
 
-    if not BUILD_CONFIG_FILE.exists():
-        err = f"Build configuration file does not exist: {BUILD_CONFIG_FILE}"
-        raise FileNotFoundError(err)
+    if not BUILD_CONFIG.exists():
+        error_msg = f"Build configuration file not found: {BUILD_CONFIG}"
+        raise BuilderError(error_msg)
 
-    for entry in (BUILD_DIR, DIST_DIR):
-        if not entry.exists():
-            entry.mkdir(parents=True)
-        elif clear:
-            for e in entry.iterdir():
-                remove_entry(e)
+    for path in (BUILD_DIR, DIST_DIR):
+        if not path.exists():
+            path.mkdir(parents=True)
 
 
-def load_config(file: Path) -> tuple[PythonConfig, ModuleConfig]:
-    """Parse TOML config file and return configurations.
+def init() -> None:
+    """Initialize the build environment."""
+    _prepare_environment()
+    _prepare_project_directory()
 
-    Args:
-        file: Path to TOML file
 
-    Returns:
-        Tuple of PythonConfig and ModuleConfig objects
+def _process_raw_config(config: dict[str, Any]) -> tuple[CPythonConfig, ModuleConfig]:
+    """Process the raw configuration dictionary into dataclasses.
 
-    Raises:
-        ValueError: If config is invalid or missing required sections
-        Tomllib.TOMLDecodeError: If file cannot be parsed
-
+    This function performs necessary type conversions and transformations on the
+    raw configuration data before it's used to instantiate the config
+    dataclasses.
     """
+    module_include = config["module"]["include"]
+    module_name = config["module"]["name"]
+    cpython_version = config["cpython"]["version"]
+
+    config["module"]["include"] = list(map(Path, module_include))
+    config["module"]["name"] = Template(module_name)
+    config["cpython"]["version"] = cpython_version.lstrip("v")
+
+    return CPythonConfig(**config["cpython"]), ModuleConfig(**config["module"])
+
+
+def load_config(file: Path) -> tuple[CPythonConfig, ModuleConfig]:
+    """Load and validate the build configuration from file."""
     with file.open("rb") as fin:
         try:
             config = tomllib.load(fin)
         except tomllib.TOMLDecodeError as e:
-            err = f"Failed to parse '{file}': {e}"
-            raise ValueError(err) from e
+            error_msg = f"Failed to parse configuration file: {file}: {e}"
+            raise BuilderError(error_msg) from e
 
-    if "python" not in config or "module" not in config:
-        err = f"Configuration file '{file}' must contain 'python' and 'module' sections"
-        raise ValueError(err)
-
-    python_config = PythonConfig(**config["python"])
-    module_config = ModuleConfig(**config["module"])
-
-    return python_config, module_config
-
-
-def get_cpython(python_conf: PythonConfig) -> tuple[Path, str]:
-    """Get CPython sources.
-
-    Args:
-        python_conf: Python build configuration
-
-    Returns:
-        Tuple of (source dir path, version string)
-
-    Raises:
-        DownloadError: If source download fails
-        TarError: If archive extraction fails
-
-    """
-    filename = Path(python_conf.sources_url).name
-
-    try:
-        version = re.findall(r"(\d+\.\d+\.\d+)", filename)[0]
-    except IndexError:
-        version = "unknown"
-
-    # Check if sources already exist
-    for entry in BUILD_DIR.iterdir():
-        if entry.is_dir() and version in entry.name:
-            logger.info("Using existing sources: %s", entry)
-            return entry, version
-
-    output = BUILD_DIR / filename
-    download(python_conf.sources_url, output)
-
-    with tarfile.open(output, "r:gz") as archive:
-        archive.extractall(BUILD_DIR, filter="fully_trusted")
-
-    output.unlink()
-    return next(BUILD_DIR.iterdir()), version
-
-
-def build_cpython(sources: Path, python_conf: PythonConfig) -> None:
-    """Build CPython for Android.
-
-    Args:
-        sources: CPython source directory
-        python_conf: Python build configuration
-
-    Raises:
-        CalledProcessError: If build commands fail
-
-    """
-    android_py = sources / "Android" / "android.py"
-
-    configure_env = os.environ.copy()
-    configure_env.update(python_conf.configure_env)
-
-    if not (sources / "cross-build" / "build").exists():
-        run(
-            [str(android_py), "configure-build", "--", *python_conf.configure_args],
-            env=configure_env,
+    if "cpython" not in config or "module" not in config:
+        error_msg = (
+            f"Configuration file is missing 'cpython' or 'module' sections: {file}"
         )
-        run([str(android_py), "make-build"])
+        raise BuilderError(error_msg)
 
-    for host in python_conf.hosts:
-        host_build = sources / "cross-build" / host
-
-        if host_build.exists():
-            logger.info("Build for '%s' already exists, skipping build", host)
-            continue
-
-        logger.info("Building for host: %s", host)
-
-        run(
-            [
-                str(android_py),
-                "configure-host",
-                host,
-                "--",
-                *python_conf.configure_args,
-            ],
-            env=configure_env,
-        )
-        run([str(android_py), "make-host", host])
-
-        if python_conf.package:
-            run([str(android_py), "package", host])
-
-            dist = host_build / "dist"
-            for entry in dist.iterdir():
-                target = DIST_DIR / entry.name
-                if target.exists():
-                    target.unlink()
-
-                entry.rename(target)
-
-
-def debloat(
-    sources: Path,
-    python_conf: PythonConfig,
-    module_conf: ModuleConfig,
-) -> None:
-    """Remove unnecessary files from build.
-
-    Args:
-        sources: Root directory of CPython source code
-        python_conf: Python build configuration
-        module_conf: Module configuration
-
-    """
-    cross_build = sources / "cross-build"
-
-    flags = GL | B | E | N
-
-    for host in python_conf.hosts:
-        prefix = cross_build / host / "prefix"
-
-        for entry in prefix.glob(module_conf.debloat_patterns, flags=flags):
-            try:
-                if entry.is_symlink() or entry.is_file():
-                    entry.unlink()
-                else:
-                    rmtree(entry)
-            except OSError:
-                logger.exception("Failed to remove: %s", entry)
-                continue
-
-            logger.info("Removed: %s", entry)
-
-
-def strip(sources: Path, python_conf: PythonConfig, module_conf: ModuleConfig) -> None:
-    """Strip debug info from binaries in prefix/bin for every host.
-
-    Args:
-        sources: Root directory of CPython source code
-        python_conf: Python build configuration
-        module_conf: Module configuration
-
-    """
-    android_home = Path(os.environ["ANDROID_HOME"])
-
-    installed_ndks = list((android_home / "ndk").iterdir())
-    installed_ndks.sort()
-
-    latest_ndk = installed_ndks[-1]
-
-    strip_bin = (
-        latest_ndk
-        / "toolchains"
-        / "llvm"
-        / "prebuilt"
-        / "linux-x86_64"
-        / "bin"
-        / "llvm-strip"
-    )
-
-    if not strip_bin.is_file():
-        logger.error("Strip binary not found: %s", strip_bin)
-        return
-
-    for host in python_conf.hosts:
-        prefix = sources / "cross-build" / host / "prefix"
-
-        bindir = prefix / "bin"
-        libdir = prefix / "lib"
-
-        walkers = chain(
-            bindir.walk(follow_symlinks=False),
-            libdir.walk(follow_symlinks=False),
-        )
-
-        for path, _, filenames in walkers:
-            for file in filenames:
-                filepath = path / file
-
-                result = run(
-                    [str(strip_bin), *module_conf.strip_args, str(filepath)],
-                    log=False,
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    check=False,
-                )
-
-                if result.returncode == 0:
-                    logger.info("Stripped: %s", filepath)
-
-
-def replace_shebang(file: Path, pattern: re.Pattern, replacement: str) -> bool:
-    """Replace shebang in text file.
-
-    Args:
-        file: File to process
-        pattern: Regex pattern for shebang
-        replacement: New shebang string
-
-    Returns:
-        True if shebang was replaced
-
-    """
-    try:
-        with file.open("rb") as f:
-            if is_binary(f.read(1024)):
-                return False
-
-            f.seek(0)
-            content = f.read().decode()
-
-        if not pattern.match(content):
-            return False
-
-        with file.open("w") as f:
-            new_content = pattern.sub(replacement, content, 1)
-            f.write(new_content)
-    except (OSError, UnicodeDecodeError):
-        return False
-    else:
-        return True
-
-
-def replace_shebangs(
-    sources: Path,
-    python_conf: PythonConfig,
-    module_conf: ModuleConfig,
-) -> None:
-    """Replace shebangs in bin directory.
-
-    Args:
-        sources: Root directory of CPython source code
-        python_conf: Python build configuration
-        module_conf: Module configuration
-
-    """
-    patterns = {
-        "python": (
-            re.compile(module_conf.shebang_mapping["python"]),
-            "#!/system/bin/python3",
-        ),
-        "shell": (re.compile(module_conf.shebang_mapping["shell"]), "#!/system/bin/sh"),
-    }
-
-    for host in python_conf.hosts:
-        bindir = sources / "cross-build" / host / "prefix" / "bin"
-
-        for file in (f for f in bindir.iterdir() if f.is_file()):
-            for pattern, replacement in patterns.values():
-                if replace_shebang(file, pattern, replacement):
-                    logger.info("Replaced shebang in: %s", file)
-                    break
+    return _process_raw_config(config)
 
 
 def main() -> None:
-    """Build Magisk modules.
+    """Run the main build pipeline.
 
-    Steps:
-    1. Parse args
-    2. Load configs
-    3. Get sources
-    4. Build Python
-    5. Package modules
+    This function parses command-line arguments, initializes the environment,
+    loads the configuration, and then executes the CPython and module build processes.
     """
-    parser = ArgumentParser()
-    parser.add_argument(
-        "--clear",
-        action="store_true",
-        help="Clear build and dist directories before building",
-    )
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "-v",
         "--version",
         action="version",
         version=f"%(prog)s {__version__} by {__author__} ({__license__})",
     )
+    parser.add_argument(
+        "-c",
+        "--clean",
+        action="store_true",
+        help="clean the build and dist directories",
+    )
+    parser.add_argument(
+        "-C",
+        "--config",
+        type=Path,
+        default=BUILD_CONFIG,
+        help="path to the configuration file",
+    )
+
     args = parser.parse_args()
 
-    init(clear=args.clear)
+    init()
 
-    python_conf, module_conf = load_config(BUILD_CONFIG_FILE)
+    if args.clean:
+        for path in chain(BUILD_DIR.iterdir(), DIST_DIR.iterdir()):
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
 
-    logger.info("Getting CPython sources...")
-    sources, ver = get_cpython(python_conf)
+        logger.info("Cleaned: %s, %s", BUILD_DIR, DIST_DIR)
 
-    if python_conf.apply_patches:
-        logger.info("Applying patches...")
-        apply_patches(sources)
+    cpython_config, module_config = load_config(args.config)
 
-    logger.info("Building CPython...")
-    build_cpython(sources, python_conf)
+    cpython_builder = CPythonBuilder(cpython_config)
+    build_result = cpython_builder.build()
 
-    if module_conf.debloat:
-        logger.info("Debloating...")
-        debloat(sources, python_conf, module_conf)
-    if module_conf.strip:
-        logger.info("Stripping binaries...")
-        strip(sources, python_conf, module_conf)
-    if module_conf.replace_shebangs:
-        logger.info("Replacing shebangs...")
-        replace_shebangs(sources, python_conf, module_conf)
-
-    logger.info("Building Magisk modules...")
     ModuleBuilder(
-        sources,
-        ver,
-        python_conf,
-        module_conf,
-    ).build()
+        module_config,
+        build_result.used_ndk_toolchain,
+        cpython_config.version,
+        cpython_config.build_hosts,
+    ).build(build_result.source_code)
+
+    logger.info("Build finished successfully!")
 
 
 if __name__ == "__main__":
