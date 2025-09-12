@@ -1,60 +1,60 @@
 # CPython build configuration
-[python]
-# URL to Python source archive (must be .tar.gz)
-sources_url = "https://github.com/python/cpython/archive/refs/tags/v3.13.7.tar.gz"
+[cpython]
+# CPython version to build.
+version = "v3.13.7"
 
-# Whether to apply patches from 'patches/' directory to source code
+# Whether to apply patches from `patches/` directory to source code.
 apply_patches = true
 
-# Whether to create distributable packages after build
-package = false
-
-# Target Android architectures to build for
-hosts = [
-    "aarch64-linux-android",
-    "arm-linux-androideabi",
-    "x86_64-linux-android",
-    "i686-linux-android",
+# Target Android architectures to build for.
+build_hosts = [
+  "aarch64-linux-android",
+  "arm-linux-androideabi",
+  "x86_64-linux-android",
+  "i686-linux-android",
 ]
 
-# Additional configure script arguments
+# Additional configure script arguments.
 configure_args = ["--disable-test-modules"]
 
-# Environment variables for configure script
-[python.configure_env]
+# Environment variables for configure script.
+# NOTE: Some variables might be overridden by the `android.py` build script.
+# Run `./android.py env HOST` to see which variables will be overridden.
+[cpython.configure_env]
 
 
-# Magisk module configuration
-# This section defines how the Python build will be modified and packaged as a Magisk module
+# Magisk module configuration.
+# This section defines how the CPython build will be modified and packaged as a Magisk module.
 [module]
-# Additional files to include in module distribution
-include_files = ["LICENSE", "README.md"]
+# Template for the packaged module name.
+# All keys from `module.prop` are supported.
+name = "${id}-${version}.zip"
 
-# Whether to remove unnecessary files from builds
+# Additional files and directories to include in module distribution.
+include = ["LICENSE", "README.md"]
+
+# Whether to remove unnecessary files from builds.
 debloat = true
 
-# Files and directories to remove from builds
-# Patterns are applied relative to the 'prefix/' directory
+# Files and directories to remove from builds.
+# Patterns are applied relative to the `prefix/` directory and support `wcmatch` glob features
+# like `GLOBSTARLONG`, `NEGATE`, `EXTGLOB`, and `BRACE`.
+# See https://facelessuser.github.io/wcmatch/glob for more details.
 debloat_patterns = [
-    "man",                                                      # Documentation files
-    "share",                                                    # Shared resources
-    "lib/pkgconfig",                                            # pkg-config files
-    "bin/!(py*)",                                               # Non-Python binaries
-    "lib/python3.*/{idlelib*,tkinter*,turtle*,**/__pycache__}", # Graphical libraries and caches
+  "man",                                                      # Documentation files.
+  "share",                                                    # Shared resources.
+  "lib/pkgconfig",                                            # pkg-config files.
+  "bin/!(py*)",                                               # Non-Python binaries.
+  "lib/python3.*/{idlelib*,tkinter*,turtle*,**/__pycache__}", # Graphical libraries and caches.
 ]
 
-# Whether to strip debug symbols from binaries
+# Apply `llvm-strip` to all executables in `prefix/bin/` and libraries in `prefix/lib/`.
+# Removes debug symbols more thoroughly than configure flags (`configure_args`/`configure_env`),
+# including those in prebuilt dependencies from https://github.com/beeware/cpython-android-source-deps.
 strip = true
 
-# Arguments passed to llvm-strip
-strip_args = ["-s"]
+# Arguments passed to `llvm-strip`.
+strip_args = ["--strip-all"]
 
-# Whether to update shebangs in executable scripts
-replace_shebangs = true
-
-# Regular expressions for matching and replacing shebangs
-# 'shell' will be replaced with '#!/system/bin/sh'
-# 'python' will be replaced with '#!/system/bin/python3'
-[module.shebang_mapping]
-shell = '(?m)^#!\s*/(?:usr/(?:local/)?|)(?:bin|sbin)/(?:env\s+)?(?:sh|bash|dash)\b'
-python = '(?m)^#!\s*/(?:usr/(?:local/)?|)(?:bin|sbin)/(?:env\s+)?python[0-9]*(?:\.[0-9]+)*\b'
+# Replace shebangs in scripts with Android-compatible paths.
+fix_shebangs = true
