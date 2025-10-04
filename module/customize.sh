@@ -1,94 +1,74 @@
 # shellcheck shell=busybox
+#
+# shellcheck disable=SC2034
 
-cd "${MODPATH}" || abort "! Failed to change directory to ${MODPATH}"
+PY2DROID_INSTALL=1
+SKIPUNZIP=1
 
-# Avoid redefining TMPDIR during module installation to prevent potential problems
-NO_TMPDIR=true . ./env.sh
-
-# PyDroid installation paths to handle migration
-PYDROID_HOME="/data/local/pydroid"
-PYDROID_MODULE="/data/adb/modules/pydroid"
-
-MIGRATION_SCRIPT="
-from pathlib import Path
-from shutil import move, copy
-pydroid = Path('${PYDROID_HOME}')
-py2droid = Path('${HOME}')
-for e in pydroid.iterdir():
-    dst = py2droid / e.name
-    if dst.exists():
-      raise SystemExit(
-          'Migration aborted: Destination already exists. Are both PyDroid and Py2Droid installed?',
-      )
-    move(e, dst)
-copy('env.sh', pydroid)
-"
-
-install() {
-  local python_tarball
-  local python_arch
-
-  python_tarball="$(find . -maxdepth 1 -type f -iname "python*.tar.xz" | head -n 1)"
-
-  if [[ -z ${python_tarball} ]]; then
-    abort "! No Python distribution tarball found"
-  fi
-
-  python_arch="$(basename -s .tar.xz "${python_tarball}" | cut -d '-' -f 3)"
-
-  if [[ ${python_arch} != "${ARCH}" ]]; then
-    abort "! This module for $python_arch architecture, but your device is $ARCH"
-  fi
-
-  # Check and perform migration from PyDroid
-  if [[ -d ${PYDROID_HOME} ]]; then
-    ui_print "- Detected existing PyDroid installation, migrating data..."
-
-    mkdir -p "${HOME}"
-
-    if ! python3 -c "${MIGRATION_SCRIPT}" >&2; then
-      ui_print "! Migration from PyDroid failed"
-
-      if [[ -d ${PYDROID_MODULE} ]]; then
-        ui_print "! Disabling PyDroid module to prevent conflicts"
-        touch "${PYDROID_MODULE}/disable"
-      else
-        ui_print "! Please manually remove ${PYDROID_HOME} if it is no longer needed"
-      fi
-    else
-      touch "${PYDROID_MODULE}/remove"
-    fi
-  fi
-
-  ui_print "- Installing into ${HOME}..."
-
-  for directory in usr .tmp .cache .config .local/share .local/state .local/bin; do
-    mkdir -p "${HOME}/${directory}"
+create_env_dirs() {
+  ui_print "- Creating directories..."
+  for var in $(env | grep "XDG_.*_HOME"); do
+    mkdir -p "${var#*=}"
   done
+  mkdir -p "${PY2DROID_TMPDIR}"
+}
 
-  if ! tar -xf "${python_tarball}" -C "${HOME}/usr" --strip-components 1; then
-    abort "! Failed to unpack Python tarball"
+extract_cpython() {
+  local prefix="$1"
+  local tarball="cpython-${ARCH}.tar.xz"
+
+  if ! unzip -l "${ZIPFILE}" | grep -q "${tarball}"; then
+    abort "! CPython for ${ARCH} not found"
   fi
 
-  mv -f env.sh "${HOME}"
+  mkdir -p "${prefix}"
 
-  # Create wrappers for python executables
-  python3 system/bin/py2droid-update-bin
-
-  echo "rm -rf \"${HOME}\"" >uninstall.sh
+  ui_print "- Extracting CPython (${tarball})..."
+  if ! unzip -p "${ZIPFILE}" "${tarball}" | tar -xJC "${prefix}" --strip-components 1; then
+    abort "! Failed to extract CPython tarball"
+  fi
 }
 
 set_permissions() {
-  set_perm_recursive "system/bin" 0 0 0755 0755
-  set_perm_recursive "${HOME}/usr/bin" 0 0 0755 0755
-  set_perm_recursive "${HOME}/usr/lib" 0 0 0755 0644
-  set_perm_recursive "${HOME}/usr/include" 0 0 0755 0644
+  local prefix="$1"
+
+  ui_print "- Setting permissions..."
+  set_perm_recursive system 0 0 0755 0755
+  # Fix ownership only (modes from tarball are already correct)
+  chown -Rf root:root "${prefix}"
 }
 
-cleanup() {
-  rm -rf LICENSE -- *.tar.xz *.md
+setup_wrappers() {
+  ui_print "- Setting up wrappers..."
+  if ! python3 system/bin/py2droid-update-bin; then
+    abort "! Failed to set up wrappers"
+  fi
 }
 
-install
-set_permissions
-cleanup
+finalize_install() {
+  ui_print "- Finalizing..."
+  echo "rm -rf '${HOME}'" >uninstall.sh
+  mv -f env.sh "${HOME}"
+}
+
+main() {
+  local prefix
+
+  cd "${MODPATH}" || abort "! Failed to change directory to module path"
+
+  if ! unzip "${ZIPFILE}" env.sh module.prop 'system/*' >&2; then
+    abort "! Failed to extract initial module files from ZIP"
+  fi
+
+  . ./env.sh
+
+  prefix="${HOME}/usr"
+
+  extract_cpython "$prefix"
+  setup_wrappers
+  create_env_dirs
+  set_permissions "$prefix"
+  finalize_install
+}
+
+main
