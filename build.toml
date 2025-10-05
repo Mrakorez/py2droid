@@ -15,7 +15,7 @@ build_hosts = [
 ]
 
 # Additional configure script arguments.
-configure_args = ["--disable-test-modules"]
+configure_args = ["--disable-test-modules", "--with-lto"]
 
 # Environment variables for configure script.
 # NOTE: Some variables might be overridden by the `android.py` build script.
