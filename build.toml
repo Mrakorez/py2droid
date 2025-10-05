@@ -43,6 +43,7 @@ debloat = true
 debloat_patterns = [
   "man",                                                      # Documentation files.
   "share",                                                    # Shared resources.
+  "include",                                                  # C/C++ header files and development resources.
   "lib/pkgconfig",                                            # pkg-config files.
   "bin/!(py*)",                                               # Non-Python binaries.
   "lib/python3.*/{idlelib*,tkinter*,turtle*,**/__pycache__}", # Graphical libraries and caches.
