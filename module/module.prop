@@ -4,3 +4,4 @@ version=v0.1.2
 versionCode=20250816
 author=Mrakorez
 description=
+updateJson=https://raw.githubusercontent.com/Mrakorez/py2droid/refs/heads/master/module/update.json
