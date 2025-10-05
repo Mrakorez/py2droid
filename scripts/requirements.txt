@@ -1,2 +1,2 @@
-bracex==2.5.post1
-wcmatch==10.0
+bracex==2.6
+wcmatch==10.1
