@@ -14,18 +14,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Build
         run: |
           python -m pip install -r scripts/requirements.txt
           scripts/build.py
 
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --latest --strip all
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          body: |
-            ## 🤖 Automated Release
-
-            This is an automated release.
-            For a complete list of changes, see [CHANGELOG.md](CHANGELOG.md).
+          body: ${{ steps.git-cliff.outputs.content }}
