@@ -1,12 +1,11 @@
 diff --git a/Lib/sysconfig/__init__.py b/Lib/sysconfig/__init__.py
-index 510c7b9..50b4cd7 100644
 --- a/Lib/sysconfig/__init__.py
 +++ b/Lib/sysconfig/__init__.py
-@@ -645,6 +645,7 @@ def get_platform():
-                 "i686": "x86",
-                 "aarch64": "arm64_v8a",
-                 "armv7l": "armeabi_v7a",
-+                "armv8l": "armeabi_v7a",
-             }[machine]
-         else:
-             # At least on Linux/Intel, 'machine' is the processor --
+@@ -703,6 +703,7 @@
+             "i686": "x86",
+             "aarch64": "arm64_v8a",
+             "armv7l": "armeabi_v7a",
++            "armv8l": "armeabi_v7a",
+         }[machine]
+     elif osname == "linux":
+         # At least on Linux/Intel, 'machine' is the processor --

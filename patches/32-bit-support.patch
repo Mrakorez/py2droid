@@ -1,11 +1,10 @@
 diff --git a/Android/android.py b/Android/android.py
-index 551168f..a7da68b 100755
 --- a/Android/android.py
 +++ b/Android/android.py
-@@ -30,7 +30,12 @@
+@@ -32,7 +32,12 @@
  TESTBED_DIR = ANDROID_DIR / "testbed"
  CROSS_BUILD_DIR = PYTHON_DIR / "cross-build"
- 
+
 -HOSTS = ["aarch64-linux-android", "x86_64-linux-android"]
 +HOSTS = [
 +    "aarch64-linux-android",
@@ -15,4 +14,3 @@ index 551168f..a7da68b 100755
 +]
  APP_ID = "org.python.testbed"
  DECODE_ARGS = ("UTF-8", "backslashreplace")
- 
