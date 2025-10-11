@@ -12,18 +12,13 @@ A Magisk module to install Python 3 on Android, including the standard library (
 4. Wait for the installation to complete.
 5. Reboot your device.
 
-## Migration from [PyDroid](https://github.com/Mrakorez/pydroid)
-
-Migration is handled automatically by the module's installation script.
-All your data will be transferred to the new installation location without any manual intervention.
-
 ## Build Process
 
 The build process is automated through `scripts/build.py`. Build parameters can be customized in `build.toml`.
 
 To build from source:
 
-1. Follow the prerequisites from [cpython/Android/README.md](https://github.com/python/cpython/blob/3.13/Android/README.md)
+1. Follow the prerequisites from [cpython/Android/README.md](https://github.com/python/cpython/blob/3.14/Android/README.md)
 
 2. Create and activate a Python virtual environment:
     ```shell
@@ -95,7 +90,7 @@ Py2Droid was designed as a lightweight, system-level Python module — for cases
 There are two main use cases where Py2Droid shines:
 
 1. A dependency for other Magisk modules or system-level scripts.
-1. A minimal standalone Python build, usable directly in the Android environment — without Termux, wrappers, or user-space hacks.
+2. A minimal standalone Python build, usable directly in the Android environment — without Termux, wrappers, or user-space hacks.
 
 It's not meant to replace Termux — it's meant to serve a different purpose.
 
