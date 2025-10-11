@@ -14,7 +14,7 @@ from pathlib import Path
 
 __author__ = "Mrakorez"
 __license__ = "MIT"
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 SCRIPT_NAME = Path(__file__).name
 
@@ -99,6 +99,8 @@ def main() -> None:
     available_binaries: set[str] = set()
 
     for entry in py2droid_path_entries:
+        if not entry.is_dir():
+            continue
         available_binaries.update(
             file.name for file in entry.iterdir() if file.is_file()
         )
