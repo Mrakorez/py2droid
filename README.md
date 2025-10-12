@@ -1,6 +1,6 @@
 # Py2Droid
 
-![Python Version](https://img.shields.io/badge/Python-3.13.7-blue) ![Magisk](https://img.shields.io/badge/Magisk-Module-green) ![GitHub License](https://img.shields.io/github/license/Mrakorez/py2droid)
+![Python Version](https://img.shields.io/badge/Python-v3.14.0-blue) ![Magisk](https://img.shields.io/badge/Magisk-Module-green) ![GitHub License](https://img.shields.io/github/license/Mrakorez/py2droid)
 
 A Magisk module to install Python 3 on Android, including the standard library (STDLIB).
 
