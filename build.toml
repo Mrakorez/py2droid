@@ -9,9 +9,9 @@ apply_patches = true
 # Target Android architectures to build for.
 build_hosts = [
   "aarch64-linux-android",
-  "arm-linux-androideabi",
   "x86_64-linux-android",
-  "i686-linux-android",
+  #  "arm-linux-androideabi",
+  #  "i686-linux-android",
 ]
 
 # Additional configure script arguments.
