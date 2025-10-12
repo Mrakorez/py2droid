@@ -1,6 +1,6 @@
 {
-    "version": "v0.1.2",
-    "versionCode": 20250816,
+    "version": "v0.2.0",
+    "versionCode": 20251012,
     "zipUrl": "https://github.com/Mrakorez/py2droid/releases/download/latest/py2droid-v0.2.0.zip",
     "changelog": "https://raw.githubusercontent.com/Mrakorez/py2droid/refs/heads/master/CHANGELOG.md"
 }
