@@ -7,23 +7,13 @@ ensuring the correct binaries are available in the module's bin directory.
 """
 
 import logging
-import sys
-from argparse import ArgumentParser
 from collections.abc import Generator
 from os import environ
 from pathlib import Path
 
-__author__ = "Mrakorez"
-__license__ = "MIT"
-__version__ = "0.2.0"
-
-SCRIPT_NAME = Path(__file__).name
-
 HOME = environ["HOME"]
-PATH = environ["PATH"]
 
-MODULE_BIN = Path("/data/adb/modules/py2droid/system/bin")
-MODULE_UPDATE_BIN = Path("/data/adb/modules_update/py2droid/system/bin")
+MODULE_BIN = Path("system/bin")
 
 # Permissions for the wrapper scripts
 PERMISSIONS_MODE = 0o755
@@ -34,7 +24,7 @@ WRAPPER_TEMPLATE = """
 """.strip()
 
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def iter_env_path() -> Generator[Path, None, None]:
@@ -54,21 +44,20 @@ def create_wrapper(path: Path) -> None:
     """Create a shell wrapper script at the specified path."""
     path.write_text(WRAPPER_TEMPLATE.format(home=HOME, prog=path.name))
     path.chmod(PERMISSIONS_MODE)
-    log.info("Created: %s", path.name)
+    logger.info("Created: %s", path.name)
 
 
 def remove_wrapper(path: Path) -> None:
     """Remove the specified wrapper script file."""
     path.unlink()
-    log.info("Removed: %s", path.name)
+    logger.info("Removed: %s", path.name)
 
 
-def sync_wrappers(modbin: Path) -> bool:
-    """Synchronize binary wrapper scripts in the specified module's bin directory."""
-    existing_wrappers = {file.name: file for file in modbin.iterdir() if file.is_file()}
-
-    if existing_wrappers.get(SCRIPT_NAME) is not None:
-        del existing_wrappers[SCRIPT_NAME]
+def sync_wrappers() -> None:
+    """Synchronize binary wrapper scripts in the `MODULE_BIN` directory."""
+    existing_wrappers = {
+        file.name: file for file in MODULE_BIN.iterdir() if file.is_file()
+    }
 
     available_executables: set[str] = set()
 
@@ -77,42 +66,23 @@ def sync_wrappers(modbin: Path) -> bool:
             file.name for file in entry.iterdir() if file.is_file()
         )
 
-    changes_made = False
-
     for name in available_executables:
         if name not in existing_wrappers:
-            create_wrapper(modbin / name)
-            changes_made = True
+            create_wrapper(MODULE_BIN / name)
 
     for name, path in existing_wrappers.items():
         if name not in available_executables:
             remove_wrapper(path)
-            changes_made = True
-
-    return changes_made
 
 
 def main() -> None:
     """Synchronize shell wrappers for Py2Droid binaries."""
-    parser = ArgumentParser()
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=f"%(prog)s {__version__} by {__author__} ({__license__})",
-    )
-
-    parser.parse_args()
-
-    if MODULE_UPDATE_BIN.is_dir():
-        modbin = MODULE_UPDATE_BIN
-    elif MODULE_BIN.is_dir():
-        modbin = MODULE_BIN
-    else:
-        sys.exit("Failed to find the module's installation directory.")
-
-    if sync_wrappers(modbin):
-        log.warning("All changes will take effect after the next reboot.")
+    try:
+        MODULE_BIN.mkdir(parents=True, exist_ok=True)
+        sync_wrappers()
+    except OSError as e:
+        logger.exception("Failed to sync wrappers")
+        raise SystemExit(1) from e
 
 
 if __name__ == "__main__":
@@ -120,6 +90,8 @@ if __name__ == "__main__":
         datefmt="%H:%M:%S",
         format="[%(levelname).1s | %(asctime)s] %(message)s",
         level=logging.INFO,
+        filename="update-bin.log",
+        filemode="w",
     )
 
     main()

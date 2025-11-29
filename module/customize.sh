@@ -33,16 +33,8 @@ set_permissions() {
   local prefix="$1"
 
   ui_print "- Setting permissions..."
-  set_perm_recursive system 0 0 0755 0755
   # Fix ownership only (modes from tarball are already correct)
   chown -Rf root:root "${prefix}"
-}
-
-setup_wrappers() {
-  ui_print "- Setting up wrappers..."
-  if ! python3 system/bin/py2droid-update-bin; then
-    abort "! Failed to set up wrappers"
-  fi
 }
 
 finalize_install() {
@@ -56,7 +48,7 @@ main() {
 
   cd "${MODPATH}" || abort "! Failed to change directory to module path"
 
-  if ! unzip "${ZIPFILE}" env.sh module.prop 'system/*' >&2; then
+  if ! unzip "${ZIPFILE}" env.sh post-fs-data.sh update-bin.py module.prop >&2; then
     abort "! Failed to extract initial module files from ZIP"
   fi
 
@@ -65,7 +57,6 @@ main() {
   prefix="${HOME}/usr"
 
   extract_cpython "$prefix"
-  setup_wrappers
   create_env_dirs
   set_permissions "$prefix"
   finalize_install
