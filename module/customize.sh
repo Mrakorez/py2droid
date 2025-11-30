@@ -2,7 +2,6 @@
 #
 # shellcheck disable=SC2034
 
-PY2DROID_INSTALL=1
 SKIPUNZIP=1
 
 create_env_dirs() {

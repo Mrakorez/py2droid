@@ -10,8 +10,9 @@ export XDG_CONFIG_HOME="${HOME}/.config"
 export XDG_DATA_HOME="${HOME}/.local/share"
 export XDG_STATE_HOME="${HOME}/.local/state"
 
-if [ -n "${PY2DROID_INSTALL}" ]; then
-  # Magisk uses TMPDIR so avoid redefining it during installation
+# Avoid redefining TMPDIR during Magisk module installation
+# MAGISK_VER is also set by KernelSU and APatch
+if [ -n "${MAGISK_VER+_}" ]; then
   export PY2DROID_TMPDIR="${HOME}/.tmp"
 else
   export TMPDIR="${HOME}/.tmp"
