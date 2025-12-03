@@ -114,7 +114,7 @@ def generate_changelog(tag: str) -> list[Path]:
 
 def update_cpython_refs(cpython_tag: str) -> list[Path]:
     """Update CPython version references and set build version in README/BUILD_TOML."""
-    badge_re = re.compile(r"(?<=badge/Python-)[\d.]+(?=-)")
+    badge_re = re.compile(r"(?<=badge/Python-)v?[\d.]+(?=-)")
     version_re = re.compile(r'(?<=version\s=\s")[^"]+')
 
     for p, r in {BUILD_TOML: version_re, README: badge_re}.items():
