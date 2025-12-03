@@ -1,7 +1,7 @@
 # CPython build configuration
 [cpython]
 # CPython version to build.
-version = "v3.14.0"
+version = "v3.14.1"
 
 # Whether to apply patches from `patches/` directory to source code.
 apply_patches = true
