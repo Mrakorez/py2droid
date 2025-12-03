@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2025-12-03
+
+### 🐛 Bug Fixes
+
+- *(scripts/release)* Add optional 'v' prefix to version regex
+
+### 💼 Other
+
+- *(cpython)* Bump to v3.14.1
+
 ## [0.2.0] - 2025-10-12
 
 ### 🚀 Features

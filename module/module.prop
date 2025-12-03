@@ -1,7 +1,7 @@
 id=py2droid
 name=Py2Droid
-version=v0.2.0
-versionCode=20251012
+version=v0.2.1
+versionCode=20251203
 author=Mrakorez
 description=
 updateJson=https://raw.githubusercontent.com/Mrakorez/py2droid/refs/heads/master/module/update.json
