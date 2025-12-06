@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2025-12-06
+
+### 🐛 Bug Fixes
+
+- *(module/update)* Correct zipUrl
+
+### 💼 Other
+
+- *(cpython)* Bump to v3.14.2
+
 ## [0.2.1] - 2025-12-03
 
 ### 🐛 Bug Fixes
