@@ -5,6 +5,7 @@ export HOME="/data/adb/py2droid"
 export PATH="${HOME}/usr/bin:${HOME}/.local/bin:${PATH}"
 export LD_LIBRARY_PATH="${HOME}/usr/lib:${LD_LIBRARY_PATH}"
 
+export XDG_BIN_HOME="${HOME}/.local/bin"
 export XDG_CACHE_HOME="${HOME}/.cache"
 export XDG_CONFIG_HOME="${HOME}/.config"
 export XDG_DATA_HOME="${HOME}/.local/share"
