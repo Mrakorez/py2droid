@@ -13,27 +13,24 @@ create_env_dirs() {
 }
 
 extract_cpython() {
-  local prefix="$1"
   local tarball="cpython-${ARCH}.tar.xz"
 
   if ! unzip -l "${ZIPFILE}" | grep -q "${tarball}"; then
     abort "! CPython for ${ARCH} not found"
   fi
 
-  mkdir -p "${prefix}"
+  mkdir -p "${PYTHONHOME}"
 
   ui_print "- Extracting CPython (${tarball})..."
-  if ! unzip -p "${ZIPFILE}" "${tarball}" | tar -xJC "${prefix}" --strip-components 1; then
+  if ! unzip -p "${ZIPFILE}" "${tarball}" | tar -xJC "${PYTHONHOME}" --strip-components 1; then
     abort "! Failed to extract CPython tarball"
   fi
 }
 
 set_permissions() {
-  local prefix="$1"
-
   ui_print "- Setting permissions..."
   # Fix ownership only (modes from tarball are already correct)
-  chown -Rf root:root "${prefix}"
+  chown -Rf root:root "${PYTHONHOME}"
 }
 
 finalize_install() {
@@ -43,8 +40,6 @@ finalize_install() {
 }
 
 main() {
-  local prefix
-
   cd "${MODPATH}" || abort "! Failed to change directory to module path"
 
   if ! unzip "${ZIPFILE}" env.sh post-fs-data.sh update-bin.py module.prop >&2; then
@@ -53,11 +48,9 @@ main() {
 
   . ./env.sh
 
-  prefix="${HOME}/usr"
-
-  extract_cpython "$prefix"
+  extract_cpython
   create_env_dirs
-  set_permissions "$prefix"
+  set_permissions
   finalize_install
 }
 
