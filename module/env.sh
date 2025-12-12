@@ -25,4 +25,12 @@ if [ -n "${MAGISK_VER+_}" ]; then
   export PY2DROID_TMPDIR="${HOME}/.tmp"
 else
   export TMPDIR="${HOME}/.tmp"
+
+  # Source user's .shrc (skipped during module installation to prevent conflicts)
+  shrc="${HOME}/.shrc"
+  if [ -f "${shrc}" ]; then
+    # shellcheck disable=SC1090
+    . "${shrc}"
+  fi
+  unset shrc
 fi
