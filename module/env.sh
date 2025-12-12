@@ -2,6 +2,10 @@
 
 export HOME="/data/adb/py2droid"
 
+# For use in scripts only
+# Not needed for Python itself
+export PYTHONHOME="${HOME}/usr"
+
 export PATH="${HOME}/usr/bin:${HOME}/.local/bin:${PATH}"
 export LD_LIBRARY_PATH="${HOME}/usr/lib:${LD_LIBRARY_PATH}"
 
