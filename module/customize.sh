@@ -46,7 +46,7 @@ main() {
     abort "! Failed to extract initial module files from ZIP"
   fi
 
-  . ./env.sh
+  . ./env.sh || abort "! Failed to source env.sh"
 
   extract_cpython
   create_env_dirs
