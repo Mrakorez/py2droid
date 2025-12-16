@@ -12,6 +12,14 @@ create_env_dirs() {
   mkdir -p "${PY2DROID_TMPDIR}"
 }
 
+is_installed() {
+  python3 -c "
+    import sys
+    from os import environ
+    sys.exit(0 if sys.prefix == environ['PYTHONHOME'] else 1)
+  " 2>/dev/null
+}
+
 extract_cpython() {
   local tarball="cpython-${ARCH}.tar.xz"
 
@@ -23,6 +31,11 @@ extract_cpython() {
 
   ui_print "- Extracting CPython (${tarball})..."
   if ! unzip -p "${ZIPFILE}" "${tarball}" | tar -xJC "${PYTHONHOME}" --strip-components 1; then
+    # Cleanup on failure for fresh installs
+    if ! is_installed; then
+      rm -rf "${PYTHONHOME}"
+      rmdir --ignore-fail-on-non-empty "${HOME}"
+    fi
     abort "! Failed to extract CPython tarball"
   fi
 }
