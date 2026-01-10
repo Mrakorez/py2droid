@@ -27,6 +27,24 @@ get_stdlib_path() {
   " 2>/dev/null
 }
 
+install_pip() {
+  local pip3
+
+  # Check if pip3 is installed and available in PATH
+  if pip3="$(which pip3)" && [[ ${pip3} =~ ^${HOME} ]]; then
+    return 0
+  fi
+
+  ui_print "- Installing pip..."
+  ui_print "  This may take a while..."
+
+  if ! python3 -m ensurepip --user >&2; then
+    ui_print "- Warning: failed to install pip"
+    ui_print "  You can try to install it manually later with:"
+    ui_print "  python3 -m ensurepip --user"
+  fi
+}
+
 backup_packages() {
   local needs_backup=false
   local packages_file="${EXTERNAL_STORAGE:-/sdcard}/py2droid-packages.txt"
@@ -122,6 +140,7 @@ main() {
   install_cpython
   create_env_dirs
   set_permissions
+  install_pip
   finalize_install
 }
 
