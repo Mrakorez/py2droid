@@ -336,6 +336,8 @@ class ModuleBuilder:
         This method processes the build artifacts for each host, compresses them,
         and then builds the final Magisk module ZIP.
         """
+        self._download_and_include_cacert()
+
         tarballs = []
         for host in self.hosts:
             prefix = source_code / "cross-build" / host / "prefix"
@@ -351,6 +353,37 @@ class ModuleBuilder:
             tarballs.append(tarball)
 
         self._package_module(tarballs)
+
+    def _download_and_include_cacert(self) -> None:
+        """Download the cacert.pem file and include it in the module.
+
+        Python doesn't see system CA certificates (e.g. from
+        /system/etc/security/cacerts), so we should provide our own CA bundle
+        for SSL verification.
+        """
+        cacert_path = BUILD_DIR / "cacert.pem"
+
+        if cacert_path.exists():
+            logger.info(
+                "Skipping download (cacert.pem already exists): %s",
+                cacert_path,
+            )
+            self.config.include.append(cacert_path)
+            return
+
+        logger.info("Downloading cacert.pem to: %s", cacert_path)
+        run(
+            "curl",
+            "-Lf",
+            "--retry",
+            "5",
+            "--retry-all-errors",
+            "-o",
+            cacert_path,
+            "https://curl.se/ca/cacert.pem",
+        )
+
+        self.config.include.append(cacert_path)
 
     def _debloat(self, prefix: Path) -> None:
         """Remove unnecessary files and directories from the prefix."""

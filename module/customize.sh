@@ -124,14 +124,27 @@ set_permissions() {
 
 finalize_install() {
   ui_print "- Finalizing..."
+
   echo "rm -rf '${HOME}'" >uninstall.sh
   mv -f env.sh "${HOME}"
+
+  mkdir -p "${SSL_CERT_FILE%/*}"
+  mv -f cacert.pem "${SSL_CERT_FILE}"
 }
 
 main() {
+  local unzip_files="
+    cacert.pem
+    env.sh
+    module.prop
+    post-fs-data.sh
+    update-bin.py
+  "
+
   cd "${MODPATH}" || abort "! Failed to change directory to module path"
 
-  if ! unzip "${ZIPFILE}" env.sh post-fs-data.sh update-bin.py module.prop >&2; then
+  # shellcheck disable=SC2086
+  if ! unzip "${ZIPFILE}" ${unzip_files} >&2; then
     abort "! Failed to extract initial module files from ZIP"
   fi
 

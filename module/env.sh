@@ -13,6 +13,10 @@ export LD_LIBRARY_PATH="${HOME}/usr/lib:${LD_LIBRARY_PATH}"
 # This is safe in our controlled environment
 export PIP_ROOT_USER_ACTION="ignore"
 
+# Python doesn't see system CA certificates (e.g. from /system/etc/security/cacerts),
+# so we should provide our own CA bundle for SSL verification
+export SSL_CERT_FILE="${PYTHONHOME}/etc/ssl/cacert.pem"
+
 export XDG_BIN_HOME="${HOME}/.local/bin"
 export XDG_CACHE_HOME="${HOME}/.cache"
 export XDG_CONFIG_HOME="${HOME}/.config"
