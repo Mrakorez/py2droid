@@ -224,13 +224,19 @@ class CPythonBuilder:
         android_home = Path(os.environ["ANDROID_HOME"])
         ndk_version = match.group(1)
 
-        prebuilt = android_home / "ndk" / ndk_version / "toolchains/llvm/prebuilt"
+        toolchain = {
+            "win32": "windows-x86_64",
+            "linux": "linux-x86_64",
+            "darwin": "darwin-x86_64",
+        }.get(sys.platform)
 
-        if (toolchain := next(prebuilt.iterdir(), None)) is None:
-            error_msg = f"NDK toolchain not found in {prebuilt}"
+        if toolchain is None:
+            error_msg = f"Unsupported platform for NDK toolchain: {sys.platform}"
             raise BuilderError(error_msg)
 
-        return toolchain
+        return (
+            android_home / "ndk" / ndk_version / "toolchains/llvm/prebuilt" / toolchain
+        )
 
     def _create_env(self, toolchain: Path) -> dict[str, str]:
         """Create the environment variables for the CPython build.
