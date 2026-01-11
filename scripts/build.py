@@ -74,7 +74,7 @@ class ModuleConfig:
     """Hold configuration for the final Magisk module packaging."""
 
     debloat: bool
-    debloat_patterns: list[str]
+    debloat_patterns: list[str | dict[str, str | list[str]]]
     fix_shebangs: bool
     include: list[Path]
     name: Template
@@ -389,13 +389,42 @@ class ModuleBuilder:
         """Remove unnecessary files and directories from the prefix."""
         logger.info("Debloating: %s", prefix)
 
-        for path in prefix.glob(self.config.debloat_patterns, flags=self.debloat_flags):
+        patterns: list[str] = []
+        conditional_patterns: list[dict[str, str | list[str]]] = []
+
+        for pattern in self.config.debloat_patterns:
+            if isinstance(pattern, str):
+                patterns.append(pattern)
+            else:
+                conditional_patterns.append(pattern)
+
+        for path in prefix.glob(patterns, flags=self.debloat_flags):
             if path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
             else:
                 path.unlink()
 
             logger.info("  - Removed: %s", path.relative_to(prefix))
+
+        for pattern in conditional_patterns:
+            raw_pattern = pattern["pattern"]
+            rm_if = pattern["rm_if"]
+
+            rm_if = set(map(str.lower, rm_if))
+
+            rm_file = "file" in rm_if
+            rm_dir = "dir" in rm_if
+            rm_symlink = "symlink" in rm_if
+
+            for path in prefix.glob(raw_pattern, flags=self.debloat_flags):
+                if (path.is_dir() and not path.is_symlink()) and rm_dir:
+                    shutil.rmtree(path)
+                elif (path.is_symlink() and rm_symlink) or (path.is_file() and rm_file):
+                    path.unlink()
+                else:
+                    continue
+
+                logger.info("  - Removed: %s", path.relative_to(prefix))
 
     def _fix_shebangs(self, prefix: Path) -> None:
         """Replace shebangs in scripts with Android-compatible paths.

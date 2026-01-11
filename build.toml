@@ -37,6 +37,11 @@ include = ["LICENSE", "README.md", "CHANGELOG.md"]
 debloat = true
 
 # Files and directories to remove from builds.
+# Patterns support extended syntax for filtering by type:
+# `{ pattern = "some/dir/**", rm_if = ["file", "symlink"] }`
+# This will match only files and symlinks, skipping directories.
+# Supported types: "file", "dir", "symlink".
+#
 # Patterns are applied relative to the `prefix/` directory and support `wcmatch` glob features
 # like `GLOBSTARLONG`, `NEGATE`, `EXTGLOB`, and `BRACE`.
 # See https://facelessuser.github.io/wcmatch/glob for more details.
