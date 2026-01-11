@@ -46,12 +46,20 @@ debloat = true
 # like `GLOBSTARLONG`, `NEGATE`, `EXTGLOB`, and `BRACE`.
 # See https://facelessuser.github.io/wcmatch/glob for more details.
 debloat_patterns = [
-  "man",                                                      # Documentation files.
-  "share",                                                    # Shared resources.
-  "include",                                                  # C/C++ header files and development resources.
-  "lib/pkgconfig",                                            # pkg-config files.
-  "bin/!(py*)",                                               # Non-Python binaries.
-  "lib/python3.*/{idlelib*,tkinter*,turtle*,**/__pycache__}", # Graphical libraries and caches.
+  "man",                                       # Documentation files.
+  "share",                                     # Shared resources.
+  "include",                                   # C/C++ header files and development resources.
+  "lib/pkgconfig",                             # pkg-config files.
+  "bin/!(py*)",                                # Non-Python binaries.
+  "lib/*.{a,la}",                              # Static libraries and libtool files.
+  "lib/python3.*/{idlelib*,tkinter*,turtle*}", # Graphical libraries.
+  "lib/python3.*/**/__pycache__",              # Compiled bytecode caches.
+
+  # Libraries not required for Python runtime.
+  { pattern = "lib/!(*python*.so*)", rm_if = [
+    "file",
+    "symlink",
+  ] },
 ]
 
 # Apply `llvm-strip` to all executables in `prefix/bin/` and libraries in `prefix/lib/`.
