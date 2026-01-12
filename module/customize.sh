@@ -133,6 +133,7 @@ finalize_install() {
 }
 
 main() {
+  local old_home="${HOME}"
   local unzip_files="
     cacert.pem
     env.sh
@@ -149,6 +150,16 @@ main() {
   fi
 
   . ./env.sh || abort "! Failed to source env.sh"
+
+  # Check that env.sh correctly overrides HOME to avoid accidentally
+  # deleting the user's actual home directory during uninstall
+  if [[ -z ${HOME} ]]; then
+    ui_print "! HOME variable is empty in env.sh"
+    abort "  Please set HOME variable"
+  elif [[ ${HOME} == "${old_home}" ]] && [[ ! ${HOME} =~ py2droid ]]; then
+    ui_print "! HOME variable is not set correctly in env.sh"
+    abort "  HOME must differ from original (${old_home}) or contain 'py2droid'"
+  fi
 
   install_cpython
   create_env_dirs
