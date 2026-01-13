@@ -5,7 +5,7 @@
 SKIPUNZIP=1
 
 create_env_dirs() {
-  ui_print "- Creating directories..."
+  ui_print "- Creating environment directories..."
   for var in $(env | grep "XDG_.*_HOME"); do
     mkdir -p "${var#*=}"
   done
@@ -82,7 +82,12 @@ install_cpython() {
   local temp
 
   if ! unzip -l "${ZIPFILE}" | grep -q "${tarball}"; then
-    abort "! CPython for ${ARCH} not found"
+    ui_print "! CPython build for ${ARCH} not found in ZIP"
+    if ${IS64BIT}; then
+      abort "  Please report this issue: github.com/Mrakorez/py2droid"
+    else
+      abort "  32-bit Android is not supported by CPython"
+    fi
   fi
 
   if is_installed; then
@@ -94,9 +99,11 @@ install_cpython() {
 
   temp=$(mktemp -d -p "${TMPDIR}") || abort "! Failed to create temporary directory"
 
-  ui_print "- Extracting CPython (${tarball})..."
+  ui_print "- Extracting CPython build..."
+  ui_print "  This may take a while..."
+
   if ! unzip -p "${ZIPFILE}" "${tarball}" | tar -xJC "${temp}" --strip-components 1; then
-    abort "! Failed to extract CPython tarball"
+    abort "! Failed to extract CPython build"
   fi
 
   if ${already_installed}; then
@@ -123,13 +130,20 @@ set_permissions() {
 }
 
 finalize_install() {
-  ui_print "- Finalizing..."
+  ui_print "- Finalizing installation..."
 
   echo "rm -rf '${HOME}'" >uninstall.sh
   mv -f env.sh "${HOME}"
 
   mkdir -p "${SSL_CERT_FILE%/*}"
   mv -f cacert.pem "${SSL_CERT_FILE}"
+
+  ui_print "- Installation complete!"
+  ui_print "  Installed for architecture: ${ARCH}"
+  ui_print "  Home directory: ${HOME}"
+  ui_print "  Python prefix: ${PYTHONHOME}"
+  ui_print "  Python version: $(python3 --version)"
+  ui_print "  Made with ❤ by Mrakorez"
 }
 
 main() {
@@ -149,7 +163,7 @@ main() {
     abort "! Failed to extract initial module files from ZIP"
   fi
 
-  . ./env.sh || abort "! Failed to source env.sh"
+  . ./env.sh || abort "! Failed to load environment configurations"
 
   # Check that env.sh correctly overrides HOME to avoid accidentally
   # deleting the user's actual home directory during uninstall
