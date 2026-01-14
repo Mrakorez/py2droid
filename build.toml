@@ -3,7 +3,7 @@
 # CPython version to build.
 version = "v3.14.2"
 
-# Whether to apply patches from `patches/` directory to source code.
+# Whether to apply patches from patches/ directory to source code.
 apply_patches = true
 
 # Target Android architectures to build for.
@@ -18,7 +18,7 @@ build_hosts = [
 configure_args = ["--disable-test-modules", "--with-lto"]
 
 # Environment variables for configure script.
-# NOTE: Some variables might be overridden by the `android.py` build script.
+# NOTE: Some variables might be overridden by the android.py build script.
 # Run `./android.py env HOST` to see which variables will be overridden.
 [cpython.configure_env]
 
@@ -27,7 +27,7 @@ configure_args = ["--disable-test-modules", "--with-lto"]
 # This section defines how the CPython build will be modified and packaged as a Magisk module.
 [module]
 # Template for the packaged module name.
-# All keys from `module.prop` are supported.
+# All keys from module.prop are supported.
 name = "${id}-${version}.zip"
 
 # Additional files and directories to include in module distribution.
@@ -38,12 +38,12 @@ debloat = true
 
 # Files and directories to remove from builds.
 # Patterns support extended syntax for filtering by type:
-# `{ pattern = "some/dir/**", rm_if = ["file", "symlink"] }`
+# { pattern = "some/dir/**", rm_if = ["file", "symlink"] }
 # This will match only files and symlinks, skipping directories.
 # Supported types: "file", "dir", "symlink".
 #
-# Patterns are applied relative to the `prefix/` directory and support `wcmatch` glob features
-# like `GLOBSTARLONG`, `NEGATE`, `EXTGLOB`, and `BRACE`.
+# Patterns are applied relative to the prefix/ directory and support `wcmatch` glob features
+# like GLOBSTARLONG, NEGATE, EXTGLOB, and BRACE.
 # See https://facelessuser.github.io/wcmatch/glob for more details.
 debloat_patterns = [
   "man",                                       # Documentation files.
@@ -62,8 +62,8 @@ debloat_patterns = [
   ] },
 ]
 
-# Apply `llvm-strip` to all executables in `prefix/bin/` and libraries in `prefix/lib/`.
-# Removes debug symbols more thoroughly than configure flags (`configure_args`/`configure_env`),
+# Apply `llvm-strip` to all executables in prefix/bin/ and libraries in prefix/lib/.
+# Removes debug symbols more thoroughly than configure flags (configure_args/configure_env),
 # including those in prebuilt dependencies from https://github.com/beeware/cpython-android-source-deps.
 strip = true
 

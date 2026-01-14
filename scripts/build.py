@@ -173,7 +173,7 @@ class CPythonBuilder:
 
     @staticmethod
     def _apply_patches(source_dir: Path) -> None:
-        """Apply all patches from the `patches/` directory to the source code."""
+        """Apply all patches from the patches/ directory to the source code."""
         logger.info("Applying patches to %s...", source_dir)
 
         for patch in PATCHES_DIR.glob("*.patch"):
@@ -209,7 +209,7 @@ class CPythonBuilder:
     def _find_ndk_toolchain(source_dir: Path) -> Path:
         """Find the NDK toolchain path from the CPython source.
 
-        This is done by parsing the `ndk_version` from the `Android/android-env.sh`
+        This is done by parsing the `ndk_version` from the Android/android-env.sh
         script and locating the corresponding toolchain in $ANDROID_HOME.
         """
         android_env = source_dir / "Android" / "android-env.sh"
@@ -256,7 +256,7 @@ class CPythonBuilder:
     def _build_hosts(self, source_dir: Path, env: dict[str, str]) -> None:
         """Run the CPython for Android build process for all target hosts.
 
-        This method automates the execution of the `Android/android.py` script
+        This method automates the execution of the Android/android.py script
         to configure and build CPython for each specified architecture.
         """
         android = source_dir / "Android"
@@ -288,7 +288,7 @@ class CPythonBuilder:
 class ModuleBuilder:
     """Handle packaging the compiled CPython into a Magisk module.
 
-    This class takes the build artifacts from `CPythonBuilder`, processes them
+    This class takes the build artifacts from CPythonBuilder, processes them
     (debloating, stripping, fixing shebangs), and packages them into a
     flashable Magisk module ZIP file.
     """
@@ -435,8 +435,8 @@ class ModuleBuilder:
     def _fix_shebangs(self, prefix: Path) -> None:
         """Replace shebangs in scripts with Android-compatible paths.
 
-        This ensures that scripts in `bin/` use `/system/bin/sh` or
-        `/system/bin/python3` as their interpreter.
+        This ensures that scripts in bin/ use /system/bin/sh or
+        /system/bin/python3 as their interpreter.
         """
         prefix_bin = prefix / "bin"
 
@@ -470,8 +470,8 @@ class ModuleBuilder:
         Primarily used to post-process prebuilt dependencies from
         https://github.com/beeware/cpython-android-source-deps,
         which may contain unstripped binaries and libraries. Stripping
-        reduces the final module size. This method processes all files in `bin/`
-        and `lib/` under the specified prefix, whether prebuilt or built locally.
+        reduces the final module size. This method processes all files in bin/
+        and lib/ under the specified prefix, whether prebuilt or built locally.
         """
         logger.info("Stripping debug symbols in: %s", prefix)
 
@@ -500,7 +500,7 @@ class ModuleBuilder:
             )
 
     def _compress(self, prefix: Path, host: str) -> Path:
-        """Compress a prefix into a `.tar.xz` archive.
+        """Compress a prefix into a .tar.xz archive.
 
         The output filename is determined by the host architecture.
         """
@@ -567,7 +567,7 @@ def is_binary(data: bytes) -> bool:
 
 
 def parse_module_prop() -> dict[str, str]:
-    """Parse `module.prop` into a dictionary."""
+    """Parse module.prop into a dictionary."""
     module_prop = MODULE_DIR / "module.prop"
     props = {}
 
@@ -584,7 +584,7 @@ def parse_module_prop() -> dict[str, str]:
 
 
 def format_module_prop(props: dict[str, str]) -> str:
-    """Convert a dictionary to the `module.prop` string format."""
+    """Convert a dictionary to the module.prop string format."""
     buf = io.StringIO()
 
     for k, v in props.items():

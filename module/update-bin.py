@@ -54,7 +54,7 @@ def remove_wrapper(path: Path) -> None:
 
 
 def sync_wrappers() -> None:
-    """Synchronize binary wrapper scripts in the `MODULE_BIN` directory."""
+    """Synchronize binary wrapper scripts in the MODULE_BIN directory."""
     existing_wrappers = {
         file.name: file for file in MODULE_BIN.iterdir() if file.is_file()
     }
