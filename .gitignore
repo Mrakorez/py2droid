@@ -7,3 +7,6 @@ scripts/.venv/
 scripts/venv/
 .venv/
 venv/
+
+# Build configs for tests and experiments
+build[-_]*.toml
