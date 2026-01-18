@@ -38,3 +38,7 @@ else
   fi
   unset shrc
 fi
+
+# Call hash to forget past locations. Without forgetting
+# past locations the PATH changes we made may not be respected
+hash -r 2>/dev/null
