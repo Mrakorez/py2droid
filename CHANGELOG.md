@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-01-19
+
+### 🚀 Features
+
+- *(module/env)* Set XDG_BIN_HOME
+- *(module/env)* Set PYTHONHOME
+- *(module/env)* Source .shrc if it exists
+- *(module/customize)* [**breaking**] Implement proper update workflow
+- *(module/customize)* Install pip by default
+- *(build)* Add `rm_if` option to debloat patterns
+- *(module/customize)* Validate HOME from env.sh
+- *(module/customize)* Improve user-friendly messages
+
+### 🐛 Bug Fixes
+
+- *(module)* Ignore pip warnings about running as root
+- *(module/customize)* Abort on env.sh source error
+- *(module/customize)* Cleanup on extraction error
+- Bundle CA certificates for HTTPS support
+- *(build)* Handle missing NDK gracefully
+- *(module/env)* Reset command hash after PATH modification
+
+### 💼 Other
+
+- Remove unnecessary libraries from distribution
+- Delete 32-bit-support.patch
+
+### 🚜 Refactor
+
+- *(module)* [**breaking**] Automate system/bin updates on boot
+- *(module/env)* Detect installation phase automatically
+- *(module/customize)* Use PYTHONHOME instead of prefix
+
+### 📚 Documentation
+
+- *(readme)* Add comprehensive documentation
+
+### 🎨 Styling
+
+- Remove backticks for better readability
+
+### ⚙️ Miscellaneous Tasks
+
+- *(gitignore)* Ignore build config variants
+
 ## [0.2.2] - 2025-12-06
 
 ### 🐛 Bug Fixes
