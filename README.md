@@ -5,7 +5,7 @@
 [![APatch](https://img.shields.io/badge/APatch-Module-%2332de84)](https://github.com/apatch/apatch)
 [![KernelSU](https://img.shields.io/badge/KernelSU-Module-%23231816)](https://github.com/tiann/KernelSU)
 [![Magisk](https://img.shields.io/badge/Magisk-Module-%2301af9c)](https://github.com/topjohnwu/Magisk)
-[![Python](https://img.shields.io/badge/Python-v3.14.2-%23306a98)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-v3.14.3-%23306a98)](https://python.org)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Mrakorez/py2droid/release.yml)](https://github.com/Mrakorez/py2droid/actions)
 [![Downloads](https://img.shields.io/github/downloads/Mrakorez/py2droid/total)](https://github.com/Mrakorez/py2droid/releases)
 [![License](https://img.shields.io/github/license/Mrakorez/py2droid)](LICENSE)
