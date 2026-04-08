@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.3] - 2026-04-08
+
+### 💼 Other
+
+- *(patches)* Remove armv8l-support.patch
+- *(build.toml)* Set apply_patches = false
+
 ## [0.3.2] - 2026-04-08
 
 ### 💼 Other
