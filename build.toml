@@ -4,7 +4,7 @@
 version = "v3.14.4"
 
 # Whether to apply patches from patches/ directory to source code.
-apply_patches = true
+apply_patches = false
 
 # Target Android architectures to build for.
 build_hosts = [
