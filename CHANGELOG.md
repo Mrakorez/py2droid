@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4] - 2026-05-15
+
+### 💼 Other
+
+- *(cpython)* Bump to v3.14.5
+
 ## [0.3.3] - 2026-04-08
 
 ### 💼 Other
