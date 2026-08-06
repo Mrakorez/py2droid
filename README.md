@@ -25,6 +25,19 @@ Built following official
 [Python for Android](https://github.com/python/cpython/blob/3.14/Android/README.md) guidelines,
 stripped of unnecessary components for minimal size.
 
+## Project Status
+
+This project is in pre-1.0 development.
+
+Current focus has moved to other projects, so updates here are mostly limited to keeping CPython
+builds fresh and fixing critical bugs on a spare-time basis.
+Breaking changes may land in minor releases.
+
+In the future, I plan to rewrite the build and repository automation scripts to make the codebase
+cleaner and improve Py2Droid for module developers.
+However, since this was one of my first projects where I gained hands-on Python experience, the
+codebase might be pretty terrible in places for now :D
+
 ## Quick Start
 
 1. Download the latest release from [Releases](https://github.com/Mrakorez/py2droid/releases)
