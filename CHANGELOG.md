@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.6] - 2026-08-06
+
+### 💼 Other
+
+- *(cpython)* Bump to v3.14.7
+
+### 📚 Documentation
+
+- Add project status and development notice to README
+
 ## [0.3.5] - 2026-06-10
 
 ### 💼 Other
